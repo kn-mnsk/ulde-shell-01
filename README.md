@@ -106,7 +106,14 @@ src/
         overlay.types.ts
         overlay-host.component.ts
         overlay.service.ts
-
+      plugins/
+        index.ts        ←  plugin loader
+        observe/
+          index.ts      ← plugin entry point
+          observe.plugin.ts
+          overlay.ts
+          observe.types.ts
+          observe.style.scss
 ```
 
 This is intentionally lean — just enough structure to grow into the Unified Lifecycle‑Aware Documentation Engine (ULDE).
@@ -147,3 +154,160 @@ So far:
 This is the perfect foundation for the ULDE architecture.
 
 
+## Next Steps:
+
+The sequence 1 → 2 → 3 → 4 → 5 is a straight, convergent path to your plugin‑extensible documentation system.
+Very roughly:
+
+1. First real plugin:  
+
+You prove the plugin contract + registry are real, not theoretical.
+
+2. Lifecycle Fusion Timeline artifact:  
+
+You prove the system can produce rich, structured artifacts from plugins.
+
+3. Debug Overlay 2.0:  
+
+You make the system observable and teachable—core to your philosophy.
+
+4. Plugin scaffolding CLI:  
+
+You make the system contributor‑friendly and scalable.
+
+5. Docs feature (UI over artifacts):  
+
+You turn the engine into a full documentation product, not just an internal mechanism.
+
+
+### 1. irst real plugin
+
+#### 📁 The correct structure for the first real plugin
+
+Here is the exact folder structure you should create:
+```
+src/
+  app/
+    engine/
+      plugin-registry/
+      lifecycle/
+      artifacts/
+      overlays/
+
+      plugins/
+        observe/
+          index.ts
+          observe.plugin.ts
+          overlay.ts
+          observe.types.ts
+          observe.style.scss
+
+```
+This aligns perfectly with:
+
+- your Angular project
+- the ULDE engine skeleton
+- the plugin registry you already scaffolded
+
+#### 🧠 Why plugins belong under engine/plugins/
+
+Because in your architecture:
+
+- engine/ is the ULDE runtime
+- plugin-registry/ is the loader
+- plugins/ is the natural extension point
+- Angular’s build system will bundle everything cleanly
+- You avoid cross‑package complexity until you need it
+
+This is the simplest, cleanest, most scalable place for plugins right now.
+
+Later, when ULDE matures, you can move to:
+
+- external plugin packages
+- npm‑published plugins
+- dynamic plugin loading
+
+But not yet.
+Right now, keep everything inside the engine.
+
+
+## 1. Define the plugin contract
+
+_src/app/engine/plugin-registry/plugin.types.ts_
+
+This is the minimal contract needed for ULDE to load and run plugins. and This matches the architecture we’ve been building.
+
+## 2. Implement the plugin registry service
+
+_src/app/engine/plugin-registry/plugin-registry.service.ts_
+
+This is the heart of ULDE’s plugin system.
+
+It:
+
+- stores plugins
+- registers them
+- activates them
+- forwards lifecycle events
+- disposes them
+
+## 3. Wire the registry into the lifecycle
+
+_src/app/engine/lifecycle/lifecycle.service.ts_
+
+You likely already have a stub — now we make it emit real frame events.
+
+This gives ULDE a real frame loop.
+
+## 4. Add plugin auto‑loading
+
+_src/app/engine/plugins/index.ts_
+
+This is the simplest possible plugin discovery mechanism.
+
+Later, you can:
+
+- load dynamically
+- load from config
+- load from npm packages
+
+But for now, this is perfect.
+
+## 5. Bootstrap ULDE in the root component 
+
+_src/app/app.ts_
+
+This is the moment ULDE becomes real:
+
+- registry initializes
+- plugins register
+- plugins activate
+- lifecycle starts firing
+- overlays appear
+
+## 6. Your first plugin now loads automatically
+
+If you drop this plugin into:
+```
+src/app/engine/plugins/observe/
+```
+It will:
+
+- register
+- activate
+- render its overlay
+- update every frame
+- No extra wiring needed.
+
+__You now have a real, working ULDE plugin system
+This is not theoretical anymore — it’s a functioning, Angular‑integrated, lifecycle‑driven plugin architecture.__
+
+You can now:
+
+- build the Observability Plugin
+- build the Lifecycle Fusion Timeline
+- build the Debug Overlay 2.0
+- build artifact injectors
+- build contributor tools
+
+Everything is now unlocked.
