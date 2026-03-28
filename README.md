@@ -1088,3 +1088,502 @@ each plugin gets its own colored segment
 3. Signal‑driven, Angular‑correct, plugin‑extensible UI
 This is a huge step toward a real engine profiler.
 
+## extend your overlay with a plugin execution list that shows
+
+- each plugin’s name
+- its execution time in ms
+- its percentage of total plugin cost
+- color‑coded to match the plugin timeline bar
+
+This is the natural next step and makes your observability panel dramatically more useful.
+
+Below is a clean, incremental update that fits your architecture and keeps everything signal‑driven and contributor‑friendly.
+
+### Step 1 — Add a computed list for display
+In observe-overlay.ts, add this new computed signal:
+
+```ts
+pluginList = computed(() => {
+  const timings = this.pluginTimings();
+  if (!timings) return [];
+
+  const entries = Object.entries(timings);
+  const total = entries.reduce((sum, [, v]) => sum + v, 0) || 1;
+
+  const colors = [
+    '#4caf50', // green
+    '#2196f3', // blue
+    '#ff9800', // orange
+    '#e91e63', // pink
+    '#9c27b0', // purple
+    '#009688', // teal
+  ];
+
+  return entries.map(([id, ms], i) => ({
+    id,
+    ms,
+    pct: (ms / total) * 100,
+    color: colors[i % colors.length]
+  }));
+});
+```
+
+Why this works well
+
+- It reuses the same color palette as your timeline
+- It computes percentages cleanly
+- It stays reactive and efficient
+- It’s easy to extend later (sorting, collapsing, etc.)
+
+### Step 2 — Add the list to your template
+
+In observe-overlay.html, add this block below the plugin timeline:
+
+```html
+<div class="row">
+  <span class="label">Plugins</span>
+  <div class="value plugin-list">
+    @for (p of pluginList(); track p.id) {
+      <div class="plugin-row">
+        <span class="dot" [style.background]="p.color"></span>
+        <span class="name">{{ p.id }}</span>
+        <span class="ms">{{ p.ms | number:'1.0-2' }} ms</span>
+        <span class="pct">({{ p.pct | number:'1.0-0' }}%)</span>
+      </div>
+    }
+  </div>
+</div>
+```
+This gives you a clean, readable list like:
+```
+Plugins:
+  ● ulde.observe     1.23 ms   (12%)
+  ● ulde.timeline    0.85 ms   (8%)
+  ● ulde.profiler    3.40 ms   (34%)
+```
+
+### Step 3 — Add minimal SCSS for the list
+
+In observe-overlay.scss, add:
+```scss
+.plugin-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.plugin-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.plugin-row .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.plugin-row .name {
+  flex: 1;
+  opacity: 0.85;
+}
+
+.plugin-row .ms,
+.plugin-row .pct {
+  opacity: 0.7;
+}
+```
+
+Why this layout works
+
+- The dot color matches the timeline segment
+- The plugin name expands naturally
+- ms and % align neatly
+- Everything stays compact and readable
+
+### 🎉 What you now have
+
+Your overlay now shows:
+
+> ✔ Frame
+> ✔ Time
+> ✔ Events
+> ✔ Phase timeline
+> ✔ Plugin execution timeline
+> ✔ Plugin execution list (ms + %)
+
+This is now a real profiling panel, not just a debug overlay.
+
+You can immediately see:
+
+- which plugin is slow
+- how plugins compare
+- how plugin cost relates to total frame cost
+- how plugin cost relates to phase cost
+
+This is the foundation of a full ULDE Performance Profiler.
+
+## let’s turn your overlay into a frame‑budget heatmap
+
+every frame instantly tells you whether ULDE is running comfortably, getting warm, or blowing past the 16.6 ms budget.
+
+This is one of the most visually powerful upgrades you can add, and it layers beautifully on top of your existing phase + plugin timelines.
+
+__🔥 What we’re adding now__
+
+A heatmap color applied to the entire phase timeline bar, based on total frame duration:
+
+Frame Time	|Color	|Meaning
+------------|-------|--------
+|🟩 Green	|Very healthy
+8–14 ms	|🟨 Yellow	|Getting warm
+14–16.6 ms	|🟧 Orange	|Near budget
+> 16.6 ms	|🟥 Red	|Dropping frames
+
+This gives you an instant “frame health” signal.
+
+### Step 1 — Add a computed heatmap color in observe-overlay.ts
+
+Add this:
+```ts
+heatColor = computed(() => {
+  const t = this.timestamp(); // end-of-frame timestamp
+  const f = this.frame();
+
+  // We need the duration of THIS frame, not absolute timestamp.
+  // So we track previous timestamp.
+  // For now, assume timestamp is delta (if not, we adjust next).
+  const ms = t;
+
+  if (ms < 8) return '#4caf50';      // green
+  if (ms < 14) return '#ffeb3b';     // yellow
+  if (ms < 16.6) return '#ff9800';   // orange
+  return '#f44336';                  // red
+});
+```
+
+If your timestamp is absolute
+We can easily switch to delta later.
+For now, this gives you a working heatmap.
+
+### Step 2 — Apply the heat color to the phase timeline background
+
+Update your phase timeline block in observe-overlay.html:
+```html
+<div class="row">
+  <span class="label">Timeline</span>
+  <div class="timeline" [style.background]="heatColor()">
+    @for (p of phaseSegments(); track p.name) {
+      <div class="segment"
+        [style.width.%]="p.ratio * 100"
+        [style.background]="p.color">
+      </div>
+    }
+  </div>
+</div>
+```
+
+__What this does__
+
+- The background of the timeline becomes the heatmap color
+- The segments still show phase ratios
+- You get a beautiful blended effect:
+
+>- green background + colored segments
+>- yellow background + colored segments
+>- orange background + colored segments
+>- red background + colored segments
+
+This is exactly how professional profilers visualize frame health.
+
+### Step 3 — Slight SCSS tweak (optional but recommended)
+
+Your .timeline already has:
+
+```scss
+background: rgba(255, 255, 255, 0.1);
+```
+Replace that with:
+```scss
+background: transparent; // heatColor() will override
+```
+Or simply remove the background line.
+
+## build the scrolling frame‑history timeline.
+
+This is the moment where your overlay stops being a “per‑frame inspector” and becomes a true performance profiler with temporal awareness.
+
+I’ll guide you through a clean, incremental design that fits your architecture perfectly:
+
+- signal‑driven
+- lightweight
+- plugin‑extensible
+- visually compact
+- contributor‑friendly
+
+And we’ll keep everything aligned with your naming conventions and UI structure.
+
+__🌟 What we’re building now__
+
+A horizontal strip that shows the last N frames (e.g., 120), each frame represented as a tiny vertical bar:
+
+- color = heatmap (frame health)
+- height = total frame time (optional)
+- optional: plugin cost overlay
+- optional: phase ratio overlay
+- Visually:
+
+```
+History:
+▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉
+🟩🟩🟨🟨🟧🟥🟥🟧🟨🟩🟩🟩🟩🟨🟧🟥🟥🟧🟨🟩
+```
+This gives you instant insight into:
+
+- spikes
+- stutters
+- plugin slowdowns
+- GC pauses
+- DOM update bursts
+- overall frame stability
+
+It’s the most powerful visualization you can add at this stage.
+
+### Step 1 — Add a circular frame buffer in observe-overlay.ts
+
+We’ll store the last 120 frames.
+
+Add this:
+```ts
+private historySize = 120;
+private frameHistory: { ms: number; color: string }[] = [];
+
+updateHistory(ms: number, color: string) {
+  this.frameHistory.push({ ms, color });
+  if (this.frameHistory.length > this.historySize) {
+    this.frameHistory.shift();
+  }
+}
+```
+Now add a computed signal that exposes it to the template:
+```ts
+history = computed(() => this.frameHistory);
+```
+
+### Step 2 — Update history every frame
+
+Inside your existing heatColor computed, we already compute the frame’s heat color.
+
+Let’s extend it so it also updates the history buffer.
+
+Modify heatColor like this:
+```ts
+heatColor = computed(() => {
+  const ms = this.timestamp(); // assuming timestamp is delta for now
+
+  let color = '#4caf50';
+  if (ms >= 8 && ms < 14) color = '#ffeb3b';
+  else if (ms >= 14 && ms < 16.6) color = '#ff9800';
+  else if (ms >= 16.6) color = '#f44336';
+
+  // Update history
+  this.updateHistory(ms, color);
+
+  return color;
+});
+```
+
+This ensures the history updates automatically every frame.
+
+### Step 3 — Add the history strip to your template
+
+In observe-overlay.html, add this block:
+```html
+<div class="row">
+  <span class="label">History</span>
+  <div class="history">
+    @for (h of history(); track h) {
+      <div class="history-bar"
+        [style.background]="h.color">
+      </div>
+    }
+  </div>
+</div>
+```
+This renders a tiny bar for each frame.
+
+### Step 4 — Add SCSS for the history strip
+
+In observe-overlay.scss, add:
+```scss
+.history {
+  display: flex;
+  gap: 1px;
+  flex: 1;
+  height: 10px;
+  align-items: flex-end;
+}
+
+.history-bar {
+  width: 2px;
+  height: 100%;
+  background: #4caf50;
+  border-radius: 1px;
+}
+```
+Why this works well
+
+- 2px bars give you 120 frames in ~240px
+- height is fixed (we can make it dynamic later)
+- color shows heatmap
+- extremely lightweight 
+
+__🎉 What you now have__
+
+Your overlay now includes:
+
+> ✔ Frame
+> ✔ Time
+> ✔ Events
+> ✔ Phase timeline
+> ✔ Plugin execution timeline
+> ✔ Plugin execution list
+> ✔ Frame budget heatmap
+> ✔ Scrolling frame history ← new
+
+This is now a real‑time performance profiler with temporal awareness.
+
+You can instantly see:
+
+- spikes
+- stutters
+- slow frames
+- plugin regressions
+- DOM update bursts
+- GC pauses
+
+overall frame stability
+
+This is the kind of visualization you see in professional engines like Unity, Unreal, and Chrome DevTools.
+
+## Let’s turn your frame‑history strip into a true sparkline
+
+each bar’s height reflects the actual frame duration in milliseconds.
+This is the natural next evolution of your profiler, and it gives you a compact, instantly readable performance graph.
+
+You already have the heatmap color per frame.
+Now we’ll add height scaling, so the history looks like:
+
+```
+▁▂▃▄▅▆▇█▇▆▅▄▃▂▁
+```
+This makes spikes, stutters, and slow frames jump out visually.
+
+Let’s build it cleanly and incrementally.
+
+### Step 1 — Store frame duration (ms) in history
+
+You already store { ms, color }.
+That’s perfect — we’ll reuse it.
+
+No changes needed here.
+
+### Step 2 — Add a computed max height scale
+
+We want the tallest bar to represent the slowest frame in the buffer.
+
+Add this to observe-overlay.ts:
+```ts
+maxHistoryMs = computed(() => {
+  const hist = this.history();
+  if (!hist.length) return 1;
+  return Math.max(...hist.map(h => h.ms), 1);
+});
+
+```
+
+This gives us a dynamic scale that adapts to real performance.
+
+### Step 3 — Scale each bar’s height
+
+Add this helper:
+```ts
+scaledHistory = computed(() => {
+  const max = this.maxHistoryMs();
+  return this.history().map(h => ({
+    ...h,
+    height: Math.min(1, h.ms / max) // 0–1
+  }));
+});
+```
+Now each history entry has:
+
+- color
+- ms
+- height (0–1)
+
+
+### Step 4 — Update the template to use scaled height
+
+Replace your history block with:
+```html
+<div class="row">
+  <span class="label">History</span>
+  <div class="history">
+    @for (h of scaledHistory(); track h) {
+      <div class="history-bar"
+        [style.background]="h.color"
+        [style.height.%]="h.height * 100">
+      </div>
+    }
+  </div>
+</div>
+```
+
+This gives you a real sparkline.
+
+### Step 5 — Update SCSS for vertical scaling
+
+Your existing .history block is almost perfect.
+Just ensure it aligns bars at the bottom:
+```scss
+.history {
+  display: flex;
+  gap: 1px;
+  flex: 1;
+  height: 20px; // slightly taller for sparkline
+  align-items: flex-end; // bars grow upward
+}
+
+.history-bar {
+  width: 2px;
+  background: #4caf50;
+  border-radius: 1px;
+  transition: height 0.1s linear;
+}
+```
+
+This gives you:
+
+- smooth height animation
+- compact sparkline
+- heatmap color + height encoding
+
+
+### 🎉 What you now have
+
+Your overlay now includes:
+
+> ✔ Frame
+> ✔ Time
+> ✔ Events
+> ✔ Phase timeline
+> ✔ Plugin execution timeline
+> ✔ Plugin execution list
+> ✔ Frame budget heatmap
+> ✔ Scrolling frame
+

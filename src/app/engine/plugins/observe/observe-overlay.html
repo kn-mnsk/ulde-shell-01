@@ -14,23 +14,53 @@
     <span class="value">{{ events()?.join(', ') }}</span>
   </div>
 
-  <!-- <div class="timeline">
-    <div class="bar" [style.width.%]="progress() * 100"></div>
-  </div> -->
-
-  <!-- <div class="timeline">
-    @for (p of phaseSegments(); track p.name) {
-    <div class="segment" [style.width.%]="p.ratio * 100" [style.background]="p.color">
+  <div class="row">
+    <span class="label">Timeline</span>
+    <div class="timeline" [style.background]="heatColor()">
+      @for (p of phaseSegments(); track p.name) {
+      <div class="segment" [style.width.%]="p.ratio * 100" [style.background]="p.color">
+      </div>
+      }
     </div>
-    }
-  </div> -->
+  </div>
 
-  <div class="plugin-timeline">
-    @for (p of pluginSegments(); track p.name) {
-    <div class="segment" [style.width.%]="p.ratio * 100" [style.background]="p.color"
-      title="{{ p.name }}: {{ p.ms | number:'1.0-2' }} ms">
+  <div class="row">
+    <span class="label">Plugin Execution</span>
+    <div class="plugin-timeline">
+      @for (p of pluginSegments(); track p.name) {
+      <div class="segment" [style.width.%]="p.ratio * 100" [style.background]="p.color"
+        title="{{ p.name }}: {{ p.ms | number:'1.0-2' }} ms">
+      </div>
+      }
     </div>
+  </div>
+
+  <div class="row">
+    <span class="label">Plugins</span>
+    <div class="value plugin-list">
+      @for (p of pluginList(); track p.id) {
+      <div class="plugin-row">
+        <span class="dot" [style.background]="p.color"></span>
+        <span class="name">{{ p.id }}</span>
+        <span class="ms">{{ p.ms | number:'1.0-2' }} ms</span>
+        <span class="pct">({{ p.pct | number:'1.0-0' }}%)</span>
+      </div>
+      }
+    </div>
+  </div>
+
+  <div class="row">
+  <span class="label">History</span>
+  <div class="history">
+    @for (h of scaledHistory(); track h) {
+      <div class="history-bar"
+        [style.background]="h.color"
+        [style.height.%]="h.height * 100">
+      </div>
     }
   </div>
+</div>
+
+
 
 </div>
