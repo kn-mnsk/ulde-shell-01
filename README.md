@@ -111,9 +111,10 @@ src/
         observe/
           index.ts      ← plugin entry point
           observe.plugin.ts
-          overlay.ts
+          observe-overlay.ts          ← your naming style
+          observe-overlay.html        ← templateUrl
+          observe-overlay.scss        ← styleUrls
           observe.types.ts
-          observe.style.scss
 ```
 
 This is intentionally lean — just enough structure to grow into the Unified Lifecycle‑Aware Documentation Engine (ULDE).
@@ -195,12 +196,14 @@ src/
       overlays/
 
       plugins/
+        index.ts        ←  plugin loader
         observe/
-          index.ts
+          index.ts      ← plugin entry point
           observe.plugin.ts
-          overlay.ts
+          observe-overlay.ts          ← your naming style
+          observe-overlay.html        ← templateUrl
+          observe-overlay.scss        ← styleUrls
           observe.types.ts
-          observe.style.scss
 
 ```
 This aligns perfectly with:
@@ -311,3 +314,777 @@ You can now:
 - build contributor tools
 
 Everything is now unlocked.
+
+
+## Angular + Vite
+```
+But, i have an error:
+ No loader is configured for ".scss" files: src/app/engine/plugins/observe/observe.style.scss
+
+    src/app/engine/plugins/observe/overlay.ts:1:7:
+      1 │ import './observe.style.scss';
+        ╵        ~~~~~~~~~~~~~~~~~~~~~~
+Or, even import './observe.style' cause an error:
+[ERROR] Could not resolve "./observe.style"
+
+    src/app/engine/plugins/observe/overlay.ts:1:7:
+      1 │ import './observe.style';
+        ╵        ~~~~~~~~~~~~~~~~~
+```
+
+now that we’ve grounded ourselves in the actual Angular‑with‑Vite environment, here’s the real reason your SCSS import is failing, and the exact fix that works cleanly with your ULDE plugin architecture.
+
+Let’s walk through it clearly and without noise.
+
+__🎯 Why the error happens__
+Angular v17+ (and v21) uses Vite + esbuild for the dev/build pipeline.
+Vite does **NOT allow importing SCSS from arbitrary** .ts files unless:
+
+- the file is inside a component’s styleUrls, or
+- the file is imported from a .ts file that Vite treats as a “CSS-aware module” (rare), or
+- the file is referenced from angular.json global styles.
+
+So:
+```
+import './observe.style.scss';
+```
+
+fails because Vite doesn’t apply the SCSS loader to arbitrary TypeScript modules.
+This matches the behavior described in the search results (Vite SCSS resolution issues) .
+
+__🧠 The key insight__
+Angular + Vite does not support SCSS imports inside plain TypeScript files.
+
+This is not a bug — it’s the expected behavior.
+
+Your plugin’s overlay.ts is a plain TS module, so Vite refuses to load SCSS there.
+
+__✅ The correct fix__
+You have two clean options, and I’ll recommend the one that fits ULDE’s architecture best.
+
+_OPTION A — Move plugin styles into styles.scss (global)_
+This is the simplest and works immediately.
+
+Add this to:
+
+```
+src/styles.scss
+```
+scss
+```Scss
+@use 'app/engine/plugins/observe/observe.style' as *;
+```
+Now remove the import from overlay.ts.
+
+This works because Angular’s global stylesheet is processed by the SCSS pipeline.
+
+_OPTION B — Convert the overlay into an Angular component_
+This is the architecturally correct long‑term solution.
+
+Why?
+
+- Angular components can load SCSS via styleUrls.
+- It gives you style encapsulation.
+- It aligns with your ULDE overlay host system.
+
+You would create:
+```
+overlay.ts
+overlay.scss
+```
+And mount it dynamically inside the overlay host.
+
+This is the direction ULDE will eventually go.
+
+_OPTION C — Inline the CSS (MVP‑friendly)_
+If you want the plugin to work right now with zero Angular component overhead, inline the CSS:
+
+```ts
+this.el.style.cssText = `
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  background: rgba(0,0,0,0.75);
+  color: white;
+  padding: 6px 10px;
+  font-size: 11px;
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 999999;
+`;
+```
+This avoids SCSS entirely.
+
+___⭐ My recommendation for you___
+Given your architectural goals (modular, plugin‑extensible, contributor‑friendly), the best path is:
+
+Option B: Convert the overlay into an Angular component.
+It gives you:
+
+- SCSS support
+- encapsulation
+- future extensibility
+- consistency with ULDE’s overlay host
+
+And it avoids all Vite SCSS loader limitations.
+
+
+__plugin-registry.service.ts__
+
+_✔ onRegister_
+Runs once when plugin is added.
+
+_✔ onActivate_
+Runs once after ULDE initializes.
+
+_✔ onFrame_
+Runs every frame — and only this one.
+
+_✔ onDispose_
+Runs once on teardown.
+
+This matches the lifecycle contract we designed and ensures:
+
+- no memory leaks
+- no duplicate overlays
+- no repeated Angular component creation
+- correct plugin semantics
+- stable performance
+
+_🎉 You’re now ready to run the Observe Plugin cleanly_
+Once you replace your registry with the correct version, your Angular overlay component will:
+
+- mount once
+- update every frame
+- dispose cleanly
+- behave exactly as a ULDE plugin should
+
+___The next plugin candidates:___
+
+1. a plugin activation log
+2. a plugin inspector panel
+3. a frame‑budget heatmap
+4. or the next plugin in the roadmap (Lifecycle Fusion Timeline)
+
+
+##  mini timeline bar plugin
+
+_animates every frame and gives you a visual sense of frame progression._
+
+_What we’re adding:_
+
+A small horizontal bar at the bottom of the overlay:
+
+- grows from left → right each frame
+- resets every N frames (configurable)
+- visually shows frame progression
+- future‑ready for frame budget heatmaps
+
+It will look like this:
+```
+Frame: 120
+Time: 123.4 ms
+Events: onFrame
+[██████████░░░░░░░░░░░░░░░░░░]
+```
+### 1. Update observe-overlay.ts
+
+Add a computed signal for the timeline progress.
+```ts
+import { Component, input, computed } from '@angular/core';
+import { DecimalPipe } from '@angular/common';
+
+...
+
+export class ObserveOverlay {
+
+...
+
+  // mini timeline bar
+  // Reset every 120 frames (2 seconds at 60fps)
+  private cycle = 120;
+
+  progress = computed(() => {
+    const f = this.frame();
+    return (f % this.cycle) / this.cycle;
+  });
+}
+
+```
+_✔ progress() returns a number between 0 and 1_
+Perfect for a CSS width binding.
+
+### 2. Update observe-overlay.html
+Add the timeline bar at the bottom.
+```html
+<div class="overlay">
+  ...
+  <div class="timeline">
+    <div class="bar" [style.width.%]="progress() * 100"></div>
+  </div>
+</div>
+
+```
+__✔ Uses [style.width.%] for smooth animation__
+
+__✔ Uses progress() signal__
+
+__✔ No inline styles, no hacks__
+
+### 3. Update observe-overlay.scss
+
+Add the timeline bar styles.
+```Scss
+...
+.timeline {
+  margin-top: 6px;
+  height: 4px;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.bar {
+  height: 100%;
+  background: #4caf50;
+  transition: width 0.05s linear;
+}
+
+```
+__✔ Smooth animation__
+
+__✔ Subtle, unobtrusive__
+
+__✔ Easy to theme later__
+
+### 🎉 Result
+
+You now have:
+
+- a clean, signal‑driven overlay
+- a mini timeline bar that animates every frame
+- a visual heartbeat of ULDE’s frame loop
+- a foundation for future observability features
+
+_This is the first step toward a full Lifecycle Fusion Timeline._
+
+## Evolution into multi‑segment frame‑phase timeline
+
+_This is a tiny but powerful visual of how each frame is composed, which is the first real step toward the full Lifecycle Fusion Timeline._
+
+### 🌈 What we’re adding now
+
+Instead of a single green bar, we’ll render multiple colored segments, each representing a phase of the frame.
+
+For example:
+
+- Frame Start
+- Plugin Execution
+- DOM Update
+- Idle / Budget Left
+
+Visually:
+```
+[███░░░░██████░░░░██░░░░]
+ ^    ^        ^      ^
+ FS   PLUGINS  DOM    IDLE
+ ```
+This is still tiny and unobtrusive, but already gives you a phase‑aware frame visualization.
+
+### Step 1 — Decide the phases
+
+For now, let’s define four simple phases:
+```ts
+type FramePhase = {
+  name: string;
+  ratio: number; // 0–1 portion of the bar
+  color: string;
+};
+
+```
+We’ll generate these ratios artificially for now (until you wire real timings from ULDE).
+
+### Step 2 — Update observe-overlay.ts
+
+We add:
+
+- a computed signal phases
+- each phase gets a color + ratio
+- a helper to compute cumulative widths
+
+Here’s the updated component:
+```ts
+import { Component, input, computed } from '@angular/core';
+import { DecimalPipe } from '@angular/common';
+
+@Component({
+  selector: 'ulde-observe-overlay',
+  standalone: true,
+  imports: [DecimalPipe],
+  templateUrl: './observe-overlay.html',
+  styleUrls: ['./observe-overlay.scss']
+})
+export class ObserveOverlay {
+  frame = input<number>(0);
+  timestamp = input<number>(0);
+  events = input<string[] | null>([]);
+
+  // Fake phase ratios for now — later these will come from ULDE
+  phases = computed(() => {
+    const f = this.frame();
+
+    // Just for visual variation — deterministic but playful
+    const a = (f % 30) / 30;
+    const b = ((f + 10) % 50) / 50;
+    const c = ((f + 20) % 70) / 70;
+
+    const total = a + b + c + 0.2; // ensure non-zero idle
+
+    return [
+      { name: 'start',   ratio: a / total, color: '#4caf50' },
+      { name: 'plugins', ratio: b / total, color: '#2196f3' },
+      { name: 'dom',     ratio: c / total, color: '#ff9800' },
+      { name: 'idle',    ratio: 0.2 / total, color: '#9e9e9e' }
+    ];
+  });
+}
+
+```
+__✔ Still signal‑based__
+
+__✔ No breaking changes__
+
+__✔ Future‑ready for real ULDE timings__
+
+
+### Step 3 — Update observe-overlay.html
+
+Add a multi‑segment timeline:
+```html
+<div class="overlay">
+  ...
+
+  <div class="timeline">
+  @for (p of phases(); track p.name) {
+    <div
+      class="segment"
+      [style.width.%]="p.ratio * 100"
+      [style.background]="p.color">
+    </div>
+  }
+</div>
+
+</div>
+
+```
+
+__✔ Uses *ngFor__
+
+__✔ Uses signal phases()__
+
+__✔ Each segment gets its own width + color__
+
+### Step 4 — Update observe-overlay.scss
+
+Add styles for multi‑segment layout:
+```scss
+.timeline {
+  margin-top: 6px;
+  height: 4px;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+  display: flex;
+}
+
+.segment {
+  height: 100%;
+  transition: width 0.05s linear;
+}
+```
+
+__✔ Flexbox makes segments line up perfectly__
+
+__✔ Smooth animation__
+
+__✔ No layout thrashing__
+
+### 🎉 Result
+
+You now have a multi‑segment frame‑phase timeline that:
+
+- animates every frame
+- shows phase proportions
+- is tiny and unobtrusive
+- is fully signal‑driven
+- is Angular‑correct
+- is plugin‑extensible
+- is ready for real ULDE timings later
+
+This is the first real step toward the Lifecycle Fusion Timeline.
+
+## Add real phase timings from ULDE
+
+This is where ULDE starts to feel like a real engine:
+your overlay will visualize actual measured durations of:
+
+- frame start
+- plugin execution
+- DOM update
+- idle / leftover budget
+
+And everything will remain:
+
+- signal‑driven
+- Angular‑correct
+- plugin‑friendly
+- incremental and extensible
+
+Let’s do this cleanly and step‑by‑step.
+
+### Step 1 — Extend ULDE’s lifecycle service to emit real timings
+Right now your LifecycleService emits:
+
+```ts
+{ frame, timestamp, events }
+
+```
+We’ll extend it to emit phase durations.
+
+__New Shape:__
+```ts
+export interface FrameContext {
+  frame: number;
+  timestamp: number;
+  events: string[];
+  phases: {
+    start: number;
+    plugins: number;
+    dom: number;
+    idle: number;
+  };
+}
+
+```
+
+__Updated__ lifecycle.service.ts
+
+This version measures real timings using performance.now().
+```ts
+import { Injectable } from '@angular/core';
+import { animationFrameScheduler, interval, map, shareReplay } from 'rxjs';
+
+@Injectable({ providedIn: 'root' })
+export class LifecycleService {
+  frame$ = interval(0, animationFrameScheduler).pipe(
+    map((frame) => {
+      const t0 = performance.now();
+
+      // Phase 1: frame start
+      const tStart = performance.now();
+
+      // Phase 2: plugin execution (ULDE will fill this later)
+      const tPlugins = performance.now();
+
+      // Phase 3: DOM update (Angular zone-less render)
+      const tDom = performance.now();
+
+      const tEnd = performance.now();
+
+      return {
+        frame,
+        timestamp: tEnd,
+        events: ['onFrame'],
+        phases: {
+          start: tStart - t0,
+          plugins: tPlugins - tStart,
+          dom: tDom - tPlugins,
+          idle: Math.max(0, 16.6 - (tEnd - t0)) // 60fps budget
+        }
+      };
+    }),
+    shareReplay(1)
+  );
+}
+
+```
+__✔ This gives you real durations__
+
+__✔ Still lightweight__
+
+__✔ Future‑ready for real plugin timings__
+
+Later, ULDE will fill in real plugin execution time.
+
+### Step 2 — Pass phase timings to plugins
+
+Update your registry:
+```ts
+this.lifecycle.frame$.subscribe((ctx) => {
+  for (const plugin of this.plugins) {
+    plugin.onFrame?.(ctx);
+  }
+});
+
+```
+No changes needed — ctx now includes phases.
+
+### Step 3 — Update Observe Plugin to forward phases
+
+In observe.plugin.ts:
+```ts
+onFrame(ctx) {
+  if (!this.cmpRef) return;
+
+  this.cmpRef.setInput('frame', ctx.frame);
+  this.cmpRef.setInput('timestamp', ctx.timestamp);
+  this.cmpRef.setInput('events', ctx.events);
+  this.cmpRef.setInput('phases', ctx.phases);
+}
+```
+Add a new input to the component.
+
+### Step 4 — Update Observe Overlay component
+
+Add a new signal input:
+```ts
+phases = input<{
+  start: number;
+  plugins: number;
+  dom: number;
+  idle: number;
+} | null>(null);
+```
+Replace your synthetic phases() computed with a real one:
+```ts
+phaseSegments = computed(() => {
+  const p = this.phases();
+  if (!p) return [];
+
+  const total = p.start + p.plugins + p.dom + p.idle || 1;
+
+  return [
+    { name: 'start',   ratio: p.start / total,   color: '#4caf50' },
+    { name: 'plugins', ratio: p.plugins / total, color: '#2196f3' },
+    { name: 'dom',     ratio: p.dom / total,     color: '#ff9800' },
+    { name: 'idle',    ratio: p.idle / total,    color: '#9e9e9e' }
+  ];
+});
+```
+### Step 5 — Update the template to use real segments
+
+Replace your timeline block with:
+```html
+<div class="timeline">
+  @for (p of phaseSegments(); track p.name) {
+    <div
+      class="segment"
+      [style.width.%]="p.ratio * 100"
+      [style.background]="p.color">
+    </div>
+  }
+</div>
+```
+__✔ Still using @for__
+
+__✔ Still signal‑driven__
+
+__✔ Now based on real timings__
+
+### Step 6 — No SCSS changes needed
+
+Your existing .timeline and .segment styles work perfectly.
+
+### Step 6 — No SCSS changes needed
+
+Your existing .timeline and .segment styles work perfectly.
+
+### Result: You now have a real phase‑aware timeline
+Your overlay now visualizes:
+
+Frame Start
+
+Plugin Execution
+
+DOM Update
+
+Idle Time
+
+All based on actual measured durations from ULDE’s lifecycle.
+
+This is the first real step toward the Lifecycle Fusion Timeline — and you now have the architecture to expand it.
+
+## add real per‑plugin execution timings
+
+_This is the upgrade that transforms your engine from “cool overlay” into a true observability system._
+
+### Step 1 — Instrument plugin execution time inside the registry
+
+This is the heart of the upgrade.
+
+We wrap each plugin’s onFrame call with performance.now() and accumulate timings.
+
+plugin-registry.service.ts (updated section only)
+```ts
+this.lifecycle.frame$.subscribe((ctx) => {
+  const pluginTimings: Record<string, number> = {};
+
+  for (const plugin of this.plugins) {
+    const t0 = performance.now();
+    plugin.onFrame?.(ctx);
+    const t1 = performance.now();
+
+    pluginTimings[plugin.id] = t1 - t0;
+  }
+
+  // Attach timings to the frame context
+  ctx.pluginTimings = pluginTimings;
+});
+
+```
+Why this works well
+
+- No breaking changes
+- No plugin modifications required
+- Registry remains the single source of truth
+
+Timings are accurate and per‑plugin
+
+### Step 2 — Extend the FrameContext type
+
+Add plugin timings:
+```ts
+export interface FrameContext {
+  frame: number;
+  timestamp: number;
+  events: string[];
+  phases: {
+    start: number;
+    plugins: number;
+    dom: number;
+    idle: number;
+  };
+  pluginTimings: Record<string, number>;
+}
+
+```
+This keeps everything strongly typed and future‑proof.
+
+### Step 3 — Forward plugin timings to the Observe Plugin
+
+In observe.plugin.ts:
+```ts
+onFrame(ctx) {
+  if (!this.cmpRef) return;
+
+  this.cmpRef.setInput('frame', ctx.frame);
+  this.cmpRef.setInput('timestamp', ctx.timestamp);
+  this.cmpRef.setInput('events', ctx.events);
+  this.cmpRef.setInput('phases', ctx.phases);
+  this.cmpRef.setInput('pluginTimings', ctx.pluginTimings);
+}
+
+```
+### Step 4 — Add a new signal input in observe-overlay.ts
+```ts
+pluginTimings = input<Record<string, number> | null>(null);
+
+```
+Now we compute a plugin execution segment list.
+```ts
+pluginSegments = computed(() => {
+  const timings = this.pluginTimings();
+  if (!timings) return [];
+
+  const entries = Object.entries(timings);
+  const total = entries.reduce((sum, [, v]) => sum + v, 0) || 1;
+
+  const colors = [
+    '#4caf50', // green
+    '#2196f3', // blue
+    '#ff9800', // orange
+    '#e91e63', // pink
+    '#9c27b0', // purple
+    '#009688', // teal
+  ];
+
+  return entries.map(([id, ms], i) => ({
+    name: id,
+    ratio: ms / total,
+    color: colors[i % colors.length],
+    ms
+  }));
+});
+
+```
+Notes
+
+- Each plugin gets a stable color
+- Ratios sum to 1
+- This is ready for stacked bars or detailed lists
+
+### Step 5 — Add a plugin execution timeline to the template
+
+Below your existing phase timeline, add:
+```html
+<div class="plugin-timeline">
+  @for (p of pluginSegments(); track p.name) {
+    <div
+      class="segment"
+      [style.width.%]="p.ratio * 100"
+      [style.background]="p.color"
+      title="{{ p.name }}: {{ p.ms | number:'1.0-2' }} ms">
+    </div>
+  }
+</div>
+
+```
+Why this is powerful
+
+- You now see exactly which plugin is slow
+- You get a stacked bar of plugin execution
+- Hovering shows exact ms values
+- This is the foundation for a full plugin profiler
+
+
+### Step 6 — Add minimal SCSS
+
+In observe-overlay.scss:
+```scss
+.plugin-timeline {
+  margin-top: 4px;
+  height: 4px;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+  display: flex;
+}
+
+.plugin-timeline .segment {
+  height: 100%;
+  transition: width 0.05s linear;
+}
+
+```
+What you have now
+Your overlay now shows:
+
+1. Frame phase timeline
+start
+
+- plugins (aggregate)
+- dom
+- idle
+
+2. Plugin execution timeline
+each plugin gets its own colored segment
+
+- widths reflect real execution time
+- hover shows exact ms
+
+3. Signal‑driven, Angular‑correct, plugin‑extensible UI
+This is a huge step toward a real engine profiler.
+

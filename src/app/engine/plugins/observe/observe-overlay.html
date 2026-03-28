@@ -1,0 +1,36 @@
+<div class="overlay">
+  <div class="row">
+    <span class="label">Frame</span>
+    <span class="value">{{ frame() }}</span>
+  </div>
+
+  <div class="row">
+    <span class="label">Time</span>
+    <span class="value">{{ timestamp() | number:'1.0-1' }} ms</span>
+  </div>
+
+  <div class="row">
+    <span class="label">Events</span>
+    <span class="value">{{ events()?.join(', ') }}</span>
+  </div>
+
+  <!-- <div class="timeline">
+    <div class="bar" [style.width.%]="progress() * 100"></div>
+  </div> -->
+
+  <!-- <div class="timeline">
+    @for (p of phaseSegments(); track p.name) {
+    <div class="segment" [style.width.%]="p.ratio * 100" [style.background]="p.color">
+    </div>
+    }
+  </div> -->
+
+  <div class="plugin-timeline">
+    @for (p of pluginSegments(); track p.name) {
+    <div class="segment" [style.width.%]="p.ratio * 100" [style.background]="p.color"
+      title="{{ p.name }}: {{ p.ms | number:'1.0-2' }} ms">
+    </div>
+    }
+  </div>
+
+</div>

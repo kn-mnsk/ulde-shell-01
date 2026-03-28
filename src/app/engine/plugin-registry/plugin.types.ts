@@ -1,3 +1,5 @@
+import { EnvironmentInjector } from "@angular/core";
+
 export interface UldePlugin {
   id: string;
   namespace: string;
@@ -15,10 +17,18 @@ export interface RegisterContext {
 
 export interface ActivateContext {
   mountPoint: HTMLElement;
+  injector: EnvironmentInjector;
 }
 
 export interface FrameContext {
   frame: number;
   timestamp: number;
   events: string[];
+  phases: {
+    start: number,
+    plugins: number,
+    dom: number,
+    idle: number
+  };
+  pluginTimings: Record<string, number>;
 }
